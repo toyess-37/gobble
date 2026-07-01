@@ -1,0 +1,35 @@
+:root {
+  --text: #eaeaea;
+  --bg: #1a1a1a;
+  --border: #333;
+  --sans: 'Bricolage Grotesque', system-ui, Roboto, sans-serif;
+  --heading: 'Bricolage Grotesque', system-ui, Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 15px/145% var(--sans);
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
