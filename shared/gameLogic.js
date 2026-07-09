@@ -35,33 +35,25 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
     let rowIdx = gameMap.rows[r];
     let lineId = "row-" + rowIdx;
     
-    let alreadyScored = false;
-    for (let i = 0; i < scoredLines.length; i++) {
-      if (scoredLines[i] === lineId) alreadyScored = true;
-    }
+    let alreadyScored = scoredLines.includes(lineId);
 
     if (!alreadyScored) {
       let lineFilled = true;
       let expression = [];
-      let p1Count = 0;
-      let p2Count = 0;
 
       for (let c = 0; c < N; c++) {
         let cell = board[rowIdx * N + c];
-        if (cell === null) lineFilled = false;
-        else {
-          expression.push(cell.value);
-          if (cell.player === 1) p1Count++;
-          else if (cell.player === 2) p2Count++;
-        }
+        if (cell === null) {
+          lineFilled = false;
+          break;
+        } else expression.push(cell.value);
       }
 
       if (lineFilled) {
         let result = evaluatePostfix(expression);
         if (result !== null) {
-          let absScore = Math.abs(result);
-          if (p1Count > p2Count) newScores.p1 += absScore;
-          else if (p2Count > p1Count) newScores.p2 += absScore;
+          if (rowIdx === 0) newScores.p1 += result;
+          else if (rowIdx === 1) newScores.p2 += result;
           newlyScoredLines.push(lineId);
         }
       }
@@ -72,33 +64,25 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
     let colIdx = gameMap.cols[c];
     let lineId = "col-" + colIdx;
     
-    let alreadyScored = false;
-    for (let i = 0; i < scoredLines.length; i++) {
-      if (scoredLines[i] === lineId) alreadyScored = true;
-    }
+    let alreadyScored = scoredLines.includes(lineId);
 
     if (!alreadyScored) {
       let lineFilled = true;
       let expression = [];
-      let p1Count = 0;
-      let p2Count = 0;
 
       for (let r = 0; r < N; r++) {
         let cell = board[r * N + colIdx];
-        if (cell === null) lineFilled = false;
-        else {
-          expression.push(cell.value);
-          if (cell.player === 1) p1Count++;
-          else if (cell.player === 2) p2Count++;
-        }
+        if (cell === null) {
+          lineFilled = false;
+          break;
+        } else expression.push(cell.value);
       }
 
       if (lineFilled) {
         let result = evaluatePostfix(expression);
         if (result !== null) {
-          let absScore = Math.abs(result);
-          if (p1Count > p2Count) newScores.p1 += absScore;
-          else if (p2Count > p1Count) newScores.p2 += absScore;
+          if (colIdx === 0) newScores.p1 += result;
+          else if (colIdx === 1) newScores.p2 += result;
           newlyScoredLines.push(lineId);
         }
       }
