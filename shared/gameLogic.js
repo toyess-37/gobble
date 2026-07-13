@@ -52,8 +52,8 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
       if (lineFilled) {
         let result = evaluatePostfix(expression);
         if (result !== null) {
-          if (rowIdx === 0) newScores.p1 += result;
-          else if (rowIdx === 1) newScores.p2 += result;
+          if (r === 0) newScores.p1 += result;
+          else if (r === 1) newScores.p2 += result;
           newlyScoredLines.push(lineId);
         }
       }
@@ -81,8 +81,8 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
       if (lineFilled) {
         let result = evaluatePostfix(expression);
         if (result !== null) {
-          if (colIdx === 0) newScores.p1 += result;
-          else if (colIdx === 1) newScores.p2 += result;
+          if (c === 0) newScores.p1 += result;
+          else if (c === 1) newScores.p2 += result;
           newlyScoredLines.push(lineId);
         }
       }
