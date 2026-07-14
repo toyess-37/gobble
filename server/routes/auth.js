@@ -9,6 +9,9 @@ const ACCESS_TTL = '15m';
 const REFRESH_TTL = '7d';
 const REFRESH_COOKIE_AGE = 7 * 24 * 60 * 60 * 1000;
 
+// Pre-hashed dummy for constant-time comparison when user doesn't exist
+const DUMMY_HASH = '$2a$10$nOUIs5kJ7naTuTFkBy1veuK0kSxUFXfuaOKdOKf9xYT0KKIGSJwFa';
+
 function signAccess(user) {
   return jwt.sign(
     { userId: user._id, username: user.username, role: user.role },
@@ -41,6 +44,8 @@ function userResponse(user) {
 
 // adds a refresh token family to the user doc. caller must save().
 function attachRefresh(user, res) {
+  const now = Date.now();
+  user.refreshTokens = user.refreshTokens.filter(t => t.createdAt && (now - new Date(t.createdAt).getTime() < REFRESH_COOKIE_AGE));
   const family = crypto.randomUUID();
   const tokenId = crypto.randomUUID();
   user.refreshTokens.push({ family, tokenId, createdAt: new Date() });
@@ -50,6 +55,7 @@ function attachRefresh(user, res) {
 router.post('/register', async (req, res) => {
   try {
     const { username, password, email } = req.body;
+    if (typeof username !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Username and password required' });
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
     if (password.trim().length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
@@ -66,6 +72,7 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({ token: signAccess(user), user: userResponse(user) });
   } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ error: 'Username already taken' });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -73,13 +80,12 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    if (typeof username !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Username and password required' });
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
     const user = await User.findOne({ username });
-    if (!user || !user.passwordHash) return res.status(400).json({ error: 'Invalid credentials' });
-
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
+    const ok = await bcrypt.compare(password, user?.passwordHash || DUMMY_HASH);
+    if (!user || !user.passwordHash || !ok) return res.status(400).json({ error: 'Invalid credentials' });
 
     attachRefresh(user, res);
     await user.save();
@@ -99,55 +105,96 @@ router.post('/guest', async (req, res) => {
 
     res.status(201).json({ token: signAccess(user), user: userResponse(user) });
   } catch (err) {
+    if (err.code === 11000) {
+      try {
+        const tag2 = crypto.randomBytes(4).toString('hex');
+        const user = new User({ username: `Guest_${tag2}`, role: 'guest' });
+        attachRefresh(user, res);
+        await user.save();
+        return res.status(201).json({ token: signAccess(user), user: userResponse(user) });
+      } catch (retryErr) {
+        return res.status(500).json({ error: 'Server error' });
+      }
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 router.post('/refresh', async (req, res) => {
-  const raw = req.cookies?.refreshToken;
-  if (!raw) return res.status(401).json({ error: 'No refresh token' });
-
-  let claims;
   try {
-    claims = jwt.verify(raw, process.env.JWT_SECRET);
-  } catch {
-    res.clearCookie('refreshToken', { path: '/api/auth' });
-    return res.status(401).json({ error: 'Invalid refresh token' });
-  }
+    const raw = req.cookies?.refreshToken;
+    if (!raw) return res.status(401).json({ error: 'No refresh token' });
 
-  if (claims.type !== 'refresh') {
-    res.clearCookie('refreshToken', { path: '/api/auth' });
-    return res.status(401).json({ error: 'Wrong token type' });
-  }
+    let claims;
+    try {
+      claims = jwt.verify(raw, process.env.JWT_SECRET);
+    } catch {
+      res.clearCookie('refreshToken', { path: '/api/auth' });
+      return res.status(401).json({ error: 'Invalid refresh token' });
+    }
 
-  const user = await User.findById(claims.userId);
-  if (!user) {
-    res.clearCookie('refreshToken', { path: '/api/auth' });
-    return res.status(401).json({ error: 'User not found' });
-  }
+    if (claims.type !== 'refresh') {
+      res.clearCookie('refreshToken', { path: '/api/auth' });
+      return res.status(401).json({ error: 'Wrong token type' });
+    }
 
-  const idx = user.refreshTokens.findIndex(t => t.family === claims.family);
-  if (idx === -1) {
-    res.clearCookie('refreshToken', { path: '/api/auth' });
-    return res.status(401).json({ error: 'Session expired' });
-  }
+    // Atomic rotation: only succeeds if family+tokenId still match
+    const newId = crypto.randomUUID();
+    const updated = await User.findOneAndUpdate(
+      { _id: claims.userId, refreshTokens: { $elemMatch: { family: claims.family, tokenId: claims.tokenId } } },
+      { $set: { 
+          'refreshTokens.$.tokenId': newId, 
+          'refreshTokens.$.previousTokenId': claims.tokenId,
+          'refreshTokens.$.rotatedAt': new Date(),
+          'refreshTokens.$.createdAt': new Date() 
+      } },
+      { new: true }
+    );
 
-  if (user.refreshTokens[idx].tokenId !== claims.tokenId) {
-    // reuse detected — wipe all sessions for this user
+    if (updated) {
+      setRefreshCookie(res, signRefresh(updated._id, newId, claims.family));
+      return res.json({ token: signAccess(updated), user: userResponse(updated) });
+    }
+
+    // Grace period: this might be a legitimate concurrent request for a token
+    // that was JUST rotated away by another request a moment ago.
+    const GRACE_MS = 10000;
+    const graceUser = await User.findOne({
+      _id: claims.userId,
+      refreshTokens: { $elemMatch: {
+        family: claims.family,
+        previousTokenId: claims.tokenId,
+        rotatedAt: { $gte: new Date(Date.now() - GRACE_MS) }
+      } }
+    });
+
+    if (graceUser) {
+      const entry = graceUser.refreshTokens.find(t => t.family === claims.family);
+      setRefreshCookie(res, signRefresh(graceUser._id, entry.tokenId, claims.family));
+      return res.json({ token: signAccess(graceUser), user: userResponse(graceUser) });
+    }
+
+    // Rotation failed — figure out why
+    const user = await User.findById(claims.userId);
+    if (!user) {
+      res.clearCookie('refreshToken', { path: '/api/auth' });
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const hasFamily = user.refreshTokens.some(t => t.family === claims.family);
+    if (!hasFamily) {
+      res.clearCookie('refreshToken', { path: '/api/auth' });
+      return res.status(401).json({ error: 'Session expired' });
+    }
+
+    // Family exists but tokenId didn't match — reuse detected
     user.refreshTokens = [];
     await user.save();
     res.clearCookie('refreshToken', { path: '/api/auth' });
     return res.status(401).json({ error: 'Token reuse detected, all sessions revoked' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
   }
-
-  // rotate: same family, new tokenId
-  const newId = crypto.randomUUID();
-  user.refreshTokens[idx].tokenId = newId;
-  user.refreshTokens[idx].createdAt = new Date();
-  await user.save();
-
-  setRefreshCookie(res, signRefresh(user._id, newId, claims.family));
-  res.json({ token: signAccess(user), user: userResponse(user) });
 });
 
 router.post('/logout', async (req, res) => {
@@ -162,7 +209,7 @@ router.post('/logout', async (req, res) => {
       await user.save();
     }
   } catch {
-    // expired or tampered — just clear the cookie
+    // expired or tampered - just clear the cookie
   }
 
   res.clearCookie('refreshToken', { path: '/api/auth' });

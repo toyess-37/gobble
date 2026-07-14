@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
-import '../styles/components.css';
 
 export default function LobbyPage() {
   const { user, logout } = useAuth();
@@ -41,12 +40,18 @@ export default function LobbyPage() {
       setTimeout(() => setError(''), 5000);
     };
 
+    const onRoomCreated = ({ roomId }) => {
+      navigate(`/game/${roomId}`);
+    };
+
     socket.on('match:found', onMatchFound);
     socket.on('matchmaking:failed', onMatchFailed);
+    socket.on('room:created', onRoomCreated);
 
     return () => {
       socket.off('match:found', onMatchFound);
       socket.off('matchmaking:failed', onMatchFailed);
+      socket.off('room:created', onRoomCreated);
     };
   }, [socket, navigate]);
 
@@ -64,7 +69,7 @@ export default function LobbyPage() {
 
   const handlePlayRated = () => {
     if (!socket || !isConnected) return setError('Not connected to server');
-    socket.emit('matchmaking:join');
+    socket.emit('matchmaking:join', { isRated: true });
     setIsSearching(true);
   };
 
@@ -76,9 +81,6 @@ export default function LobbyPage() {
   const handleCreateRoom = () => {
     if (!socket || !isConnected) return setError('Not connected to server');
     socket.emit('room:create');
-    socket.once('room:created', ({ roomId }) => {
-      navigate(`/game/${roomId}`);
-    });
   };
 
   const handleJoinRoom = (e) => {
@@ -91,162 +93,142 @@ export default function LobbyPage() {
   };
 
   return (
-    <div style={{ backgroundColor: '#1a1a1a', minHeight: '100vh', color: '#eaeaea', padding: '24px' }}>
+    <div className="bg-bg min-h-screen text-text p-4 sm:p-6 font-sans">
       
       {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '24px', fontWeight: 'bold' }}>
-            <div style={{ backgroundColor: '#fff', color: '#1a1a1a', padding: '4px 8px', borderRadius: '4px' }}>G</div>
+      <header className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-2 text-xl sm:text-2xl font-bold">
+            <div className="bg-white text-bg px-2 py-1 rounded">G</div>
             GOBBLE
           </div>
-          <div style={{ color: '#888', fontSize: '14px', display: 'flex', gap: '16px' }}>
-            <span><span style={{ color: '#4caf50' }}>●</span> {onlineCount} Online</span>
+          <div className="text-text-muted text-sm hidden md:flex gap-4">
+            <span><span className="text-success">●</span> {onlineCount} Online</span>
             <span>{liveGamesCount} Live Games</span>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 'bold' }}>{user?.username || 'Guest'}</div>
-            <div style={{ color: '#888', fontSize: '12px' }}>{user?.glicko?.rating || 1500} Glicko</div>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="text-right hidden sm:block">
+            <div className="font-bold">{user?.username || 'Guest'}</div>
+            <div className="text-text-muted text-xs">{user?.glicko?.rating || 1500} Glicko</div>
           </div>
           <div 
             onClick={() => navigate(`/profile/${user?.username}`)}
-            style={{ width: '40px', height: '40px', backgroundColor: '#e66545', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '20px', cursor: 'pointer' }}
+            className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center font-bold text-xl cursor-pointer transition-transform duration-200 active:scale-95 text-white"
           >
             {user?.username?.[0]?.toUpperCase() || 'G'}
           </div>
-          <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #333', color: '#aaa', padding: '8px', borderRadius: '4px', cursor: 'pointer' }}>Logout</button>
+          <button onClick={handleLogout} className="bg-transparent border border-border text-text-subtle p-2 rounded cursor-pointer transition-colors duration-200 hover:bg-border hover:text-white">Logout</button>
         </div>
       </header>
 
-      {error && <div style={{ color: '#ff6b6b', marginBottom: '16px' }}>{error}</div>}
+      {error && <div className="text-error mb-4">{error}</div>}
 
       {/* Main Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
         
         {/* Left Column (Actions) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="flex flex-col gap-4">
           
-          <div 
-            onClick={handlePlayRated}
-            style={{ 
-              backgroundColor: 'rgba(230, 101, 69, 0.05)', 
-              border: '1px solid #e66545', 
-              borderRadius: '12px', 
-              padding: '32px', 
-              cursor: 'pointer', 
-              position: 'relative', 
-              overflow: 'hidden',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(230, 101, 69, 0.1)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(230, 101, 69, 0.05)'}
-          >
-            <h2 style={{ fontSize: '32px', marginBottom: '8px', color: '#fff', position: 'relative', zIndex: 2 }}>Play Rated</h2>
-            <p style={{ color: '#aaa', position: 'relative', zIndex: 2 }}>Find an opponent near your {user?.glicko?.rating || 1542} rating.</p>
-            <div style={{ position: 'absolute', right: '32px', top: '50%', transform: 'translateY(-50%)', fontSize: '100px', opacity: 0.05, zIndex: 1, pointerEvents: 'none' }}>
-              ⚔️
-            </div>
+          <div onClick={handlePlayRated} className="bg-primary-lighter border border-primary rounded-xl p-6 sm:p-8 cursor-pointer relative overflow-hidden transition-colors duration-200 hover:bg-primary-light">
+            <h2 className="text-2xl sm:text-3xl mb-2 text-white relative z-10">Play Rated</h2>
+            <p className="text-text-subtle relative z-10">Find an opponent near your rating.</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div 
               onClick={() => {
                 if (!socket || !isConnected) return setError('Not connected to server');
                 socket.emit('matchmaking:join', { isRated: false });
                 setIsSearching(true);
               }}
-              style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', cursor: 'pointer', border: '1px solid #333', transition: 'border-color 0.2s' }}
-              onMouseOver={(e) => e.currentTarget.style.borderColor = '#666'}
-              onMouseOut={(e) => e.currentTarget.style.borderColor = '#333'}
+              className="bg-[#1e1e1e] p-5 sm:p-6 rounded-xl cursor-pointer border border-border-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_4px_rgba(0,0,0,0.2)] transition-colors duration-200 hover:bg-bg-card"
             >
-              <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Unrated Match</h3>
-              <p style={{ color: '#888', fontSize: '14px' }}>Play without rating pressure.</p>
+              <h3 className="text-lg sm:text-xl mb-2 text-white">Unrated Match</h3>
+              <p className="text-text-muted text-sm">Play without rating pressure.</p>
             </div>
 
-            <div 
-              style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', cursor: 'pointer', border: '1px solid #333', transition: 'border-color 0.2s' }}
-              onMouseOver={(e) => e.currentTarget.style.borderColor = '#666'}
-              onMouseOut={(e) => e.currentTarget.style.borderColor = '#333'}
-            >
-              <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Bot Practice</h3>
-              <p style={{ color: '#888', fontSize: '14px' }}>Train against GobbleNet.</p>
+            <div className="bg-[#1e1e1e] p-5 sm:p-6 rounded-xl cursor-pointer border border-border-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_4px_rgba(0,0,0,0.2)] transition-colors duration-200 hover:bg-bg-card">
+              <h3 className="text-lg sm:text-xl mb-2 text-white">Bot Practice</h3>
+              <p className="text-text-muted text-sm">Train against GobbleNet.</p>
             </div>
 
-            <div style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', border: '1px solid #333' }}>
-              <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Join with Code</h3>
-              <p style={{ color: '#888', fontSize: '14px', marginBottom: '12px' }}>Play with a friend directly.</p>
-              <form onSubmit={handleJoinRoom} style={{ display: 'flex', gap: '8px' }}>
-                <input 
-                  type="text" 
-                  placeholder="CODE" 
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #333', background: '#1a1a1a', color: '#fff', textTransform: 'uppercase', outline: 'none' }} 
-                  maxLength={6}
-                />
-                <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#333', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Join</button>
-              </form>
+            <div className="bg-[#1e1e1e] p-5 sm:p-6 rounded-xl cursor-pointer border border-border-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_4px_rgba(0,0,0,0.2)] transition-colors duration-200 hover:bg-bg-card">
+              <h3 className="text-lg sm:text-xl mb-2 text-white">Play with Friend</h3>
+              <p className="text-text-muted text-sm">Create or join a private room.</p>
+              
+              <div className="flex flex-col gap-3 mt-3">
+                <button onClick={handleCreateRoom} className="w-full py-2.5 bg-primary text-white border-none rounded-md cursor-pointer font-bold transition-colors duration-200 hover:bg-primary-hover active:bg-primary-active">
+                  Create Room
+                </button>
+                <div className="text-center text-text-muted text-xs font-bold">OR</div>
+                <form onSubmit={handleJoinRoom} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="CODE" 
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                    className="w-full p-2 rounded-md border border-border bg-bg text-white uppercase outline-none focus:border-primary"
+                    maxLength={8}
+                  />
+                  <button type="submit" className="px-4 py-2 bg-border text-white border-none rounded-md cursor-pointer font-bold transition-colors duration-200 hover:bg-border-light active:bg-border-lighter">Join</button>
+                </form>
+              </div>
             </div>
 
-            <div 
-              style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', cursor: 'pointer', border: '1px solid #333', transition: 'border-color 0.2s' }}
-              onMouseOver={(e) => e.currentTarget.style.borderColor = '#666'}
-              onMouseOut={(e) => e.currentTarget.style.borderColor = '#333'}
-            >
-              <h3 style={{ fontSize: '20px', marginBottom: '8px' }}>Spectate</h3>
-              <p style={{ color: '#888', fontSize: '14px' }}>Watch high Elo games.</p>
+            <div className="bg-[#1e1e1e] p-5 sm:p-6 rounded-xl cursor-pointer border border-border-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_4px_rgba(0,0,0,0.2)] transition-colors duration-200 hover:bg-bg-card">
+              <h3 className="text-lg sm:text-xl mb-2 text-white">Spectate</h3>
+              <p className="text-text-muted text-sm">Watch high Elo games.</p>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: 'auto' }}>
-            <div style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', textAlign: 'center', border: '1px solid #333' }}>
-              <div style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '4px' }}>54%</div>
-              <div style={{ color: '#888', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Win Rate</div>
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-auto pt-4">
+            <div className="bg-bg-input p-4 sm:p-6 rounded-xl text-center border border-border">
+              <div className="text-xl sm:text-3xl font-bold mb-1">54%</div>
+              <div className="text-text-muted text-[10px] sm:text-xs uppercase tracking-wider">Win Rate</div>
             </div>
-            <div style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', textAlign: 'center', border: '1px solid #333' }}>
-              <div style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '4px' }}>4</div>
-              <div style={{ color: '#888', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Win Streak</div>
+            <div className="bg-bg-input p-4 sm:p-6 rounded-xl text-center border border-border">
+              <div className="text-xl sm:text-3xl font-bold mb-1">4</div>
+              <div className="text-text-muted text-[10px] sm:text-xs uppercase tracking-wider">Win Streak</div>
             </div>
-            <div style={{ backgroundColor: '#141414', padding: '24px', borderRadius: '12px', textAlign: 'center', border: '1px solid #333' }}>
-              <div style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '4px' }}>#12,402</div>
-              <div style={{ color: '#888', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Global Rank</div>
+            <div className="bg-bg-input p-4 sm:p-6 rounded-xl text-center border border-border">
+              <div className="text-xl sm:text-3xl font-bold mb-1">#12k</div>
+              <div className="text-text-muted text-[10px] sm:text-xs uppercase tracking-wider">Global Rank</div>
             </div>
           </div>
 
         </div>
 
         {/* Right Column (Live & Recent) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div className="flex flex-col gap-6">
           
           <div>
-            <h4 style={{ color: '#888', fontSize: '13px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>Live Top Games</h4>
+            <h4 className="text-text-muted text-[13px] font-semibold uppercase tracking-widest mb-4">Live Top Games</h4>
             {liveGames.map(game => (
-              <div key={game.id} style={{ backgroundColor: '#141414', padding: '16px 20px', borderRadius: '12px', border: '1px solid #2a2a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div key={game.id} className="bg-bg-input px-5 py-4 rounded-xl border border-border-dark flex justify-between items-center mb-3">
                 <div>
-                  <div style={{ fontWeight: '600', marginBottom: '4px', fontSize: '15px' }}>{game.p1} ({game.p1Elo}) vs {game.p2} ({game.p2Elo})</div>
-                  <div style={{ fontSize: '13px', color: '#888' }}>Move {game.move} • 01:23 remaining</div>
+                  <div className="font-semibold mb-1 text-[15px]">{game.p1} ({game.p1Elo}) vs {game.p2} ({game.p2Elo})</div>
+                  <div className="text-[13px] text-text-muted">Move {game.move} • 01:23 remaining</div>
                 </div>
-                <button onClick={() => navigate(`/spectate/${game.id}`)} style={{ padding: '0', backgroundColor: 'transparent', border: 'none', color: '#e66545', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}>Watch</button>
+                <button onClick={() => navigate(`/spectate/${game.id}`)} className="p-0 bg-transparent border-none text-primary font-bold cursor-pointer text-sm hover:underline">Watch</button>
               </div>
             ))}
           </div>
 
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h4 style={{ color: '#888', fontSize: '13px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px' }}>Recent Games</h4>
-              <span style={{ color: '#e66545', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>View All</span>
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-text-muted text-[13px] font-semibold uppercase tracking-widest m-0">Recent Games</h4>
+              <span className="text-primary text-[13px] font-bold cursor-pointer">View All</span>
             </div>
             {recentGames.map(game => (
-              <div key={game.id} style={{ backgroundColor: '#141414', padding: '16px 20px', borderRadius: '12px', border: '1px solid #2a2a2a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div key={game.id} className="bg-bg-input px-5 py-4 rounded-xl border border-border-dark flex justify-between items-center mb-3">
                 <div>
-                  <div style={{ fontWeight: '600', marginBottom: '4px', fontSize: '15px' }}>vs {game.vs}</div>
-                  <div style={{ fontSize: '13px', color: '#888' }}>Rated • {game.time}</div>
+                  <div className="font-semibold mb-1 text-[15px]">vs {game.vs}</div>
+                  <div className="text-[13px] text-text-muted">Rated • {game.time}</div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '15px', color: game.change.startsWith('+') ? '#4caf50' : '#ff6b6b' }}>
+                <div>
+                  <div className={`font-bold text-[15px] ${game.change.startsWith('+') ? 'text-success' : 'text-error'}`}>
                     {game.me} - {game.them} ({game.change})
                   </div>
                 </div>
@@ -255,25 +237,25 @@ export default function LobbyPage() {
           </div>
 
           <div>
-            <h4 style={{ color: '#888', fontSize: '13px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>Leaderboard</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <h4 className="text-text-muted text-[13px] font-semibold uppercase tracking-widest mb-4">Leaderboard</h4>
+            <div className="flex flex-col gap-2">
               {leaderboard.map(entry => (
-                <div key={entry.rank} style={{ backgroundColor: '#141414', padding: '16px 20px', borderRadius: '12px', border: '1px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ color: '#888', width: '20px', fontWeight: 'bold' }}>{entry.rank}</div>
-                  <div style={{ width: '28px', height: '28px', backgroundColor: '#e6a822', borderRadius: '6px', color: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '13px' }}>M</div>
-                  <div style={{ fontWeight: '600', flex: 1, fontSize: '15px' }}>{entry.name}</div>
-                  <div style={{ fontWeight: 'bold', color: '#fff' }}>{entry.elo}</div>
+                <div key={entry.rank} className="bg-bg-input px-5 py-4 rounded-xl border border-border-dark flex items-center gap-4">
+                  <div className="text-text-muted w-5 font-bold text-center">{entry.rank}</div>
+                  <div className="w-7 h-7 bg-accent-gold rounded-md text-bg flex items-center justify-center font-bold text-[13px]">M</div>
+                  <div className="font-semibold flex-1 text-[15px]">{entry.name}</div>
+                  <div className="font-bold text-white">{entry.elo}</div>
                 </div>
               ))}
               
-              {/* Highlighted 'You' Row matching the mockup */}
-              <div style={{ backgroundColor: 'rgba(230, 101, 69, 0.05)', padding: '16px 20px', borderRadius: '12px', border: '1px solid #e66545', display: 'flex', alignItems: 'center', gap: '16px', marginTop: '4px' }}>
-                <div style={{ color: '#888', width: '20px', fontWeight: 'bold', textAlign: 'center' }}>-</div>
-                <div style={{ width: '28px', height: '28px', backgroundColor: '#e66545', borderRadius: '6px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '13px' }}>
+              {/* Highlighted 'You' Row */}
+              <div className="bg-primary-lighter border border-primary mt-1 px-5 py-4 rounded-xl flex items-center gap-4">
+                <div className="text-text-muted w-5 font-bold text-center">-</div>
+                <div className="w-7 h-7 bg-primary text-white rounded-md flex items-center justify-center font-bold text-[13px]">
                   {user?.username?.[0]?.toUpperCase() || 'E'}
                 </div>
-                <div style={{ fontWeight: '600', flex: 1, fontSize: '15px' }}>{user?.username || 'EulerFan99'} (You)</div>
-                <div style={{ fontWeight: 'bold', color: '#fff' }}>{user?.glicko?.rating || 1542}</div>
+                <div className="font-semibold flex-1 text-[15px]">{user?.username || 'EulerFan99'} (You)</div>
+                <div className="font-bold text-white">{user?.glicko?.rating || 1542}</div>
               </div>
             </div>
           </div>
@@ -282,14 +264,13 @@ export default function LobbyPage() {
       </div>
 
       {isSearching && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: '#1a1a1a', padding: '40px', borderRadius: '16px', border: '1px solid #333', textAlign: 'center', minWidth: '300px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px', animation: 'spin 2s linear infinite' }}>⚔️</div>
-            <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>Searching for Opponent</h2>
-            <p style={{ color: '#888', marginBottom: '24px' }}>Wait time: {searchTime}s (Max 30s)</p>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-bg p-8 sm:p-10 rounded-2xl border border-border text-center min-w-[300px]">
+            <h2 className="text-2xl mb-2 font-bold text-white">Searching for Opponent</h2>
+            <p className="text-text-muted mb-6">Wait time: {searchTime}s (Max 30s)</p>
             <button 
               onClick={handleCancelSearch}
-              style={{ padding: '12px 24px', backgroundColor: 'transparent', border: '1px solid #e66545', color: '#e66545', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              className="px-6 py-3 bg-transparent border border-primary text-primary rounded-lg cursor-pointer font-bold transition-colors duration-200 hover:bg-primary hover:text-white active:bg-primary-active active:border-primary-active"
             >
               Cancel
             </button>

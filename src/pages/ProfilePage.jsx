@@ -7,21 +7,21 @@ export default function ProfilePage() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ backgroundColor: '#1a1a1a', minHeight: '100vh', color: '#eaeaea', padding: '24px' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '24px', fontWeight: 'bold' }}>
-          <div style={{ backgroundColor: '#fff', color: '#1a1a1a', padding: '4px 8px', borderRadius: '4px' }}>G</div>
+    <div className="bg-bg min-h-screen text-text p-6 font-sans">
+      <header className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-2 text-2xl font-bold">
+          <div className="bg-white text-bg px-2 py-1 rounded">G</div>
           GOBBLE
         </div>
-        <button onClick={() => navigate('/lobby')} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '16px' }}>
+        <button onClick={() => navigate('/lobby')} className="bg-transparent border-none text-text-subtle cursor-pointer flex items-center gap-1.5 text-base transition-colors duration-200 hover:text-white">
           <ArrowLeft size={18} /> Back to Lobby
         </button>
       </header>
       
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: '32px', marginBottom: '16px' }}>{username}'s Profile</h2>
-          <p style={{ color: '#aaa' }}>Profile implementation pending.</p>
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center">
+          <h2 className="text-3xl mb-4">{username}'s Profile</h2>
+          <p className="text-text-subtle">Profile implementation pending.</p>
         </div>
       </div>
     </div>

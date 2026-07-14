@@ -2,13 +2,13 @@ import React, { useReducer, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Board from '../components/Board.jsx';
 import Rack from '../components/Rack.jsx';
+import CopyButton from '../components/CopyButton.jsx';
 import { THEME, N, OPERATORS } from '../utils/constants.js';
 import { getCellData } from '../../shared/cellData.js';
 import { isValidPlacement } from '../utils/validation.js';
 import { evaluateLines } from '../../shared/gameLogic.js';
 import { useSocket } from '../contexts/SocketContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import '../styles/components.css';
 
 const initGameState = () => ({
   map: null,
@@ -117,7 +117,7 @@ export default function GamePage() {
 
     // Initial join/rejoin when mounting
     if (isConnected) {
-      socket.emit('room:rejoin', { roomId }); // Backend must support room:rejoin
+      socket.emit('room:join', { roomId });
     }
 
     return () => {
@@ -137,15 +137,14 @@ export default function GamePage() {
         currentStep++;
         if (currentStep > N) {
           clearInterval(interval);
+          setTimeout(() => {
+            navigate(`/postgame/${roomId}`);
+          }, 1500); // Wait 1.5s after animation finishes before redirecting
         }
-      }, 300);
+      }, 700); // 700ms gives time to read the text
       return () => clearInterval(interval);
-    } else if (state.phase === 'ended') {
-      setTimeout(() => {
-        navigate(`/postgame/${roomId}`);
-      }, 3000);
-    }
-  }, [state.phase, navigate, roomId]);
+    } 
+  }, [state.phase, navigate, roomId, dispatch]);
 
   const handleRackTileClick = (value, playerNum) => {
     if (playerNum !== state.currentPlayer || state.phase !== 'playing') return;
@@ -183,10 +182,39 @@ export default function GamePage() {
   };
 
   if (!state.map) {
+    const inviteLink = `${window.location.origin}/game/${roomId}`;
+    
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#1a1a1a', color: '#eaeaea' }}>
-        <h2 style={{ marginBottom: '16px', fontSize: '32px' }}>Room: {roomId}</h2>
-        <p style={{ color: '#aaa', fontSize: '18px' }}>Waiting for opponent or syncing state...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg text-text font-sans p-6">
+        <div className="bg-bg-card border border-border rounded-2xl p-8 sm:p-12 text-center max-w-md w-full shadow-lg">
+          <h2 className="mb-6 text-2xl sm:text-3xl font-bold">Room Created</h2>
+          
+          <div className="mb-8">
+            <p className="text-text-muted mb-2 text-sm uppercase tracking-widest font-bold">Room Code</p>
+            <div className="flex items-center justify-center gap-3">
+              <span className="text-3xl sm:text-4xl font-black text-primary tracking-[0.2em]">{roomId}</span>
+              <CopyButton textToCopy={roomId} label="" className="p-2 bg-transparent border-none text-text-subtle hover:text-white" />
+            </div>
+          </div>
+          
+          <div className="mb-8">
+            <p className="text-text-muted mb-2 text-sm uppercase tracking-widest font-bold">Invite Link</p>
+            <div className="flex items-center gap-2 bg-bg-input rounded-lg border border-border p-2">
+              <input 
+                type="text" 
+                value={inviteLink} 
+                readOnly 
+                className="bg-transparent border-none text-text-subtle text-sm flex-1 outline-none truncate" 
+              />
+              <CopyButton textToCopy={inviteLink} />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-3 text-text-subtle">
+            <div className="w-4 h-4 border-2 border-t-primary border-r-transparent border-b-primary border-l-transparent rounded-full animate-spin"></div>
+            <p className="text-lg font-medium">Waiting for opponent...</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -206,80 +234,121 @@ export default function GamePage() {
   const p1Name = players.find(p => p.playerNumber === 1)?.username || "Player 1";
   const p2Name = players.find(p => p.playerNumber === 2)?.username || "Player 2";
 
-  // Derive postfix stack for the latest move
-  let currentStackStr = "No evaluation yet";
-  if (state.moves && state.moves.length > 0) {
+  // Dynamic readout banner for moves and evaluation
+  let currentStackStr = "Game Started - Place your first tile!";
+  if (state.phase === 'evaluating') {
+    if (state.evalStep >= 0 && state.evalStep < N) {
+      const evaluatingLines = state.scoredLines?.filter(l => l.index === state.evalStep) || [];
+      if (evaluatingLines.length > 0) {
+         const descriptions = evaluatingLines.map(l => {
+           const pName = l.player === 1 ? p1Name : p2Name;
+           const scoreStr = l.score > 0 ? `+${l.score}` : l.score;
+           return `${pName} scores ${scoreStr} on ${l.lineType}`;
+         });
+         currentStackStr = `Evaluating Step ${state.evalStep + 1}: ` + descriptions.join(' | ');
+      } else {
+         currentStackStr = `Evaluating Step ${state.evalStep + 1}... (No points scored)`;
+      }
+    } else if (state.evalStep >= N) {
+      currentStackStr = "Evaluation Complete! Calculating final results...";
+    }
+  } else if (state.moves && state.moves.length > 0) {
     const lastMove = state.moves[state.moves.length - 1];
-    currentStackStr = `Last placed: ${lastMove.effectiveTile} at (${lastMove.row}, ${lastMove.col})`;
-    // We could build a full evaluation trace here, but keeping it simple for UI representation
+    const playerName = lastMove.player === 1 ? p1Name : p2Name;
+    currentStackStr = `${playerName} placed ${lastMove.effectiveTile} at (${lastMove.row}, ${lastMove.col})`;
   }
 
+  const isP2 = myNumber === 2;
+
+  const leftScore = isP2 ? state.scores.p2 : state.scores.p1;
+  const leftName = isP2 ? p2Name : p1Name;
+  const leftColor = isP2 ? THEME.blue.color : THEME.red.color;
+
+  const rightScore = isP2 ? state.scores.p1 : state.scores.p2;
+  const rightName = isP2 ? p1Name : p2Name;
+  const rightColor = isP2 ? THEME.red.color : THEME.blue.color;
+
   return (
-    <div style={{ backgroundColor: '#1a1a1a', minHeight: '100vh', color: '#eaeaea', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #333' }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>Gobble - {roomId}</h1>
-        {gameError && <div style={{ color: '#ff6b6b' }}>{gameError}</div>}
+    <div className="flex flex-col items-center justify-center min-h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_center,#1a1a1a_0%,#060607_100%)] p-5 font-sans text-text">
+      <header className="mb-5 text-center">
+        <h1 className="text-text m-0 text-2xl sm:text-3xl font-semibold">Gobble - {roomId}</h1>
+        {gameError && <div className="text-error mt-2 font-semibold">{gameError}</div>}
       </header>
 
-      <div style={{ display: 'flex', flex: 1, padding: '24px', gap: '24px', overflow: 'hidden' }}>
-        
-        {/* Left Panel: Move Log */}
-        <div style={{ width: '250px', backgroundColor: '#242424', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', border: '1px solid #333' }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '14px', textTransform: 'uppercase', color: '#888' }}>Move Log</h3>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {state.moves.map(m => (
-              <div key={m.turnNumber} style={{ fontSize: '12px', padding: '8px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
-                <span style={{ color: m.player === 1 ? THEME.red.color : THEME.blue.color, fontWeight: 'bold' }}>
-                  {m.player === 1 ? p1Name : p2Name}
-                </span> placed <b>{m.effectiveTile}</b> at ({m.row}, {m.col})
-              </div>
-            ))}
+      <div className="w-full max-w-7xl mx-auto">
+        <div className="flex flex-col items-center w-full">
+          <div className="flex items-center gap-10 mb-6">
+            <div className="flex flex-col items-center">
+              <div className="text-5xl sm:text-6xl font-bold" style={{ color: leftColor }}>{leftScore}</div>
+              <div className="text-text-muted mt-2 font-bold uppercase tracking-wider text-sm">{leftName}</div>
+            </div>
+            <div className="text-xl font-bold text-text-subtle">vs</div>
+            <div className="flex flex-col items-center">
+              <div className="text-5xl sm:text-6xl font-bold" style={{ color: rightColor }}>{rightScore}</div>
+              <div className="text-text-muted mt-2 font-bold uppercase tracking-wider text-sm">{rightName}</div>
+            </div>
           </div>
-        </div>
 
-        {/* Center: Board & Racks */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="game-layout">
-            <Rack
-              playerName={p1Name}
-              theme={THEME.red}
-              rackData={state.p1Rack}
-              onTileClick={(val) => handleRackTileClick(val, 1)}
-              selectedTile={p1Selected}
-              isInactivePlayer={p1Inactive}
-            />
-            <Board
-              selectedTile={state.selectedTile}
-              boardState={state.board}
-              onCellClick={handleBoardCellClick}
-              gameMap={state.map}
-              evalStep={state.evalStep}
-            />
-            <Rack
-              playerName={p2Name}
-              theme={THEME.blue}
-              rackData={state.p2Rack}
-              onTileClick={(val) => handleRackTileClick(val, 2)}
-              selectedTile={p2Selected}
-              isInactivePlayer={p2Inactive}
-            />
-          </div>
-        </div>
-
-        {/* Right Panel: Postfix Stack */}
-        <div style={{ width: '250px', backgroundColor: '#242424', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', border: '1px solid #333' }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '14px', textTransform: 'uppercase', color: '#888' }}>Postfix Visualizer</h3>
-          <div style={{ padding: '16px', backgroundColor: '#1a1a1a', borderRadius: '8px', color: '#aaa', fontSize: '14px', textAlign: 'center' }}>
+          <div className={`mb-8 px-6 py-3 rounded-xl border border-border font-medium text-center shadow-sm transition-all duration-300 ${state.phase === 'evaluating' ? 'bg-primary/20 border-primary text-white scale-105' : 'bg-bg-card text-text-subtle'}`}>
             {currentStackStr}
           </div>
-          <div style={{ marginTop: 'auto', textAlign: 'center' }}>
-            <div style={{ color: THEME.red.color, fontSize: '32px', fontWeight: 'bold' }}>{state.scores.p1}</div>
-            <div style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>{p1Name}</div>
-            <div style={{ color: THEME.blue.color, fontSize: '32px', fontWeight: 'bold' }}>{state.scores.p2}</div>
-            <div style={{ color: '#888', fontSize: '12px' }}>{p2Name}</div>
+
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-14 w-full justify-center">
+            {isP2 ? (
+              <>
+                <Rack
+                  playerName={p2Name}
+                  theme={THEME.blue}
+                  rackData={state.p2Rack}
+                  onTileClick={(val) => handleRackTileClick(val, 2)}
+                  selectedTile={p2Selected}
+                  isInactivePlayer={p2Inactive}
+                />
+                <Board
+                  selectedTile={state.selectedTile}
+                  boardState={state.board}
+                  onCellClick={handleBoardCellClick}
+                  gameMap={state.map}
+                  evalStep={state.evalStep}
+                />
+                <Rack
+                  playerName={p1Name}
+                  theme={THEME.red}
+                  rackData={state.p1Rack}
+                  onTileClick={(val) => handleRackTileClick(val, 1)}
+                  selectedTile={p1Selected}
+                  isInactivePlayer={p1Inactive}
+                />
+              </>
+            ) : (
+              <>
+                <Rack
+                  playerName={p1Name}
+                  theme={THEME.red}
+                  rackData={state.p1Rack}
+                  onTileClick={(val) => handleRackTileClick(val, 1)}
+                  selectedTile={p1Selected}
+                  isInactivePlayer={p1Inactive}
+                />
+                <Board
+                  selectedTile={state.selectedTile}
+                  boardState={state.board}
+                  onCellClick={handleBoardCellClick}
+                  gameMap={state.map}
+                  evalStep={state.evalStep}
+                />
+                <Rack
+                  playerName={p2Name}
+                  theme={THEME.blue}
+                  rackData={state.p2Rack}
+                  onTileClick={(val) => handleRackTileClick(val, 2)}
+                  selectedTile={p2Selected}
+                  isInactivePlayer={p2Inactive}
+                />
+              </>
+            )}
           </div>
         </div>
-
       </div>
     </div>
   );

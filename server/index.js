@@ -6,9 +6,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth.js';
-import { createRoom, joinRoom, handlePlaceTile, rooms } from './gameState.js';
+import { createRoom, joinRoom, handlePlaceTile, rooms, activePlayers } from './gameState.js';
 import { GameSession } from './models/GameSession.js';
 import { User } from './models/User.js';
 import { updateGlicko } from './utils/glicko.js';
@@ -38,7 +39,7 @@ const authLimiter = rateLimit({
 });
 
 const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: 3,
   message: { error: 'Too many accounts created from this IP, please try again after an hour.' }
 });
@@ -47,9 +48,28 @@ app.use('/api/auth/register', registerLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/guest', authLimiter);
 
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use('/api/auth/refresh', refreshLimiter);
+
 app.use('/api/auth', authRoutes);
 
-app.get('/api/matches/:matchId', async (req, res) => {
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Authentication required' });
+  const token = authHeader.split(' ')[1];
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+app.get('/api/matches/:matchId', requireAuth, async (req, res) => {
   try {
     const match = await GameSession.findById(req.params.matchId);
     if (!match) return res.status(404).json({ error: 'Match not found' });
@@ -58,11 +78,41 @@ app.get('/api/matches/:matchId', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
 mongoose.connect(process.env.MONGO_URI, {})
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-// Socket Auth Middleware
+async function applyRatingUpdate(gameSession, winnerNum) {
+  const p1Record = gameSession.players.find(p => p.playerNumber === 1);
+  const p2Record = gameSession.players.find(p => p.playerNumber === 2);
+  if (!p1Record || !p2Record) return;
+
+  const user1 = await User.findById(p1Record.userId);
+  const user2 = await User.findById(p2Record.userId);
+  if (!user1 || !user2) return;
+
+  let s1 = 0.5, s2 = 0.5;
+  let u1StatsInc = { 'stats.draws': 1 };
+  let u2StatsInc = { 'stats.draws': 1 };
+
+  if (winnerNum === 1) {
+    s1 = 1; s2 = 0;
+    u1StatsInc = { 'stats.wins': 1 };
+    u2StatsInc = { 'stats.losses': 1 };
+  } else if (winnerNum === 2) {
+    s1 = 0; s2 = 1;
+    u1StatsInc = { 'stats.losses': 1 };
+    u2StatsInc = { 'stats.wins': 1 };
+  }
+
+  const newG1 = updateGlicko(user1.glicko.rating, user1.glicko.rd, user1.glicko.vol, [{ rating: user2.glicko.rating, rd: user2.glicko.rd, score: s1 }]);
+  const newG2 = updateGlicko(user2.glicko.rating, user2.glicko.rd, user2.glicko.vol, [{ rating: user1.glicko.rating, rd: user1.glicko.rd, score: s2 }]);
+
+  await User.findByIdAndUpdate(user1._id, { $inc: u1StatsInc, $set: { glicko: newG1 } });
+  await User.findByIdAndUpdate(user2._id, { $inc: u2StatsInc, $set: { glicko: newG2 } });
+}
+
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('Authentication error'));
@@ -79,9 +129,10 @@ io.on('connection', (socket) => {
 
   socket.on('matchmaking:join', async (data) => {
     try {
-      const fullUser = await User.findById(socket.user.id);
+      const fullUser = await User.findById(socket.user.userId);
       if (fullUser) {
-        joinMatchmaking(fullUser, socket.id, socket, data?.isRated !== false);
+        const isRated = fullUser.role === 'guest' ? false : data?.isRated !== false;
+        joinMatchmaking(fullUser, socket.id, socket, isRated);
       }
     } catch (e) {
       console.error('Matchmaking error:', e);
@@ -89,24 +140,27 @@ io.on('connection', (socket) => {
   });
 
   socket.on('matchmaking:leave', () => {
-    leaveMatchmaking(socket.user.id);
+    leaveMatchmaking(socket.user.userId);
   });
 
   socket.on('room:create', () => {
-    const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    leaveMatchmaking(socket.user.userId);
+    const roomId = crypto.randomBytes(4).toString('hex').toUpperCase();
     createRoom(roomId);
     
-    // Atomically join the creator
     const result = joinRoom(roomId, socket.user, socket.id);
-    if (!result.error) {
-      socket.join(roomId);
-      socket.roomId = roomId;
+    if (result.error) {
+      rooms.delete(roomId);
+      return socket.emit('game:error', { message: result.error });
     }
     
+    socket.join(roomId);
+    socket.roomId = roomId;
     socket.emit('room:created', { roomId });
   });
 
-  socket.on('room:join', async ({ roomId }) => {
+  const handleRoomJoin = async ({ roomId }) => {
+    leaveMatchmaking(socket.user.userId);
     const result = joinRoom(roomId, socket.user, socket.id);
     if (result.error) {
       return socket.emit('game:error', { message: result.error });
@@ -115,7 +169,20 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.roomId = roomId;
 
-    const { room, playerNumber } = result;
+    const { room, playerNumber, isRejoin } = result;
+
+    if (isRejoin) {
+      if (room.state.phase === 'playing') {
+        socket.emit('game:start', { 
+          roomId,
+          gameState: room.state, 
+          players: room.players.map(p => ({ username: p.username, playerNumber: p.playerNumber })) 
+        });
+      } else {
+        socket.emit('room:joined', { roomId, playerNumber, message: 'Waiting for opponent...' });
+      }
+      return;
+    }
     
     if (room.players.length === 2) {
       room.state.phase = 'playing';
@@ -125,7 +192,8 @@ io.on('connection', (socket) => {
         mapConfig: room.state.map,
         players: room.players.map(p => ({ userId: p.userId, username: p.username, playerNumber: p.playerNumber }))
       });
-      await gameSession.save();
+      room.sessionSavePromise = gameSession.save();
+      await room.sessionSavePromise;
 
       io.to(roomId).emit('game:start', { 
         roomId,
@@ -135,26 +203,10 @@ io.on('connection', (socket) => {
     } else {
       socket.emit('room:joined', { roomId, playerNumber, message: 'Waiting for opponent...' });
     }
-  });
+  };
 
-  socket.on('room:rejoin', ({ roomId }) => {
-    const room = rooms.get(roomId);
-    if (!room) return socket.emit('game:error', { message: 'Room not found or game ended' });
-    
-    const player = room.players.find(p => p.userId === socket.user.id);
-    if (player) {
-      player.socketId = socket.id;
-      socket.join(roomId);
-      socket.roomId = roomId;
-      socket.emit('game:start', { 
-        roomId,
-        gameState: room.state, 
-        players: room.players.map(p => ({ username: p.username, playerNumber: p.playerNumber })) 
-      });
-    } else {
-      socket.emit('game:error', { message: 'You are not part of this game' });
-    }
-  });
+  socket.on('room:join', handleRoomJoin);
+  socket.on('room:rejoin', handleRoomJoin);
 
   socket.on('room:spectate', ({ roomId }) => {
     const room = rooms.get(roomId);
@@ -173,7 +225,7 @@ io.on('connection', (socket) => {
       return socket.emit('game:error', { message: 'Unauthorized room access' });
     }
 
-    const result = await handlePlaceTile(roomId, playerNumber, index, tileValue);
+    const result = await handlePlaceTile(roomId, playerNumber, index, tileValue, socket.id);
     if (result.error) {
       return socket.emit('game:error', { message: result.error });
     }
@@ -187,41 +239,23 @@ io.on('connection', (socket) => {
         boardSnapshot: room.state.board,
         winner: room.state.winner,
         scores: room.state.scores,
-        duration: Date.now() - room.state.moves[0]?.timestamp,
+        duration: Date.now() - (room.state.moves[0]?.timestamp || Date.now()),
         completedAt: new Date(),
         $push: { moves: { $each: room.state.moves.slice(-10) } }
       }, { new: true });
 
       if (gameSession && gameSession.isRated) {
-        const p1Id = gameSession.players.find(p => p.playerNumber === 1).userId;
-        const p2Id = gameSession.players.find(p => p.playerNumber === 2).userId;
-        
-        const user1 = await User.findById(p1Id);
-        const user2 = await User.findById(p2Id);
-
-        if (user1 && user2) {
-          let s1 = 0.5, s2 = 0.5;
-          if (room.state.winner === 1) { s1 = 1; s2 = 0; user1.stats.wins++; user2.stats.losses++; }
-          else if (room.state.winner === 2) { s1 = 0; s2 = 1; user1.stats.losses++; user2.stats.wins++; }
-          else { user1.stats.draws++; user2.stats.draws++; }
-
-          const newG1 = updateGlicko(user1.glicko.rating, user1.glicko.rd, user1.glicko.vol, [{ rating: user2.glicko.rating, rd: user2.glicko.rd, score: s1 }]);
-          const newG2 = updateGlicko(user2.glicko.rating, user2.glicko.rd, user2.glicko.vol, [{ rating: user1.glicko.rating, rd: user1.glicko.rd, score: s2 }]);
-
-          user1.glicko = newG1;
-          user2.glicko = newG2;
-          await user1.save();
-          await user2.save();
-        }
+        await applyRatingUpdate(gameSession, room.state.winner);
       }
 
+      room.players.forEach(p => activePlayers.delete(p.userId));
       rooms.delete(roomId);
     }
   });
 
   socket.on('disconnect', async () => {
     console.log(`User disconnected: ${socket.id}`);
-    leaveMatchmaking(socket.user?.id);
+    leaveMatchmaking(socket.user?.userId);
     const roomId = socket.roomId;
     if (roomId) {
       const room = rooms.get(roomId);
@@ -233,6 +267,10 @@ io.on('connection', (socket) => {
           room.state.phase = 'ended';
           room.state.winner = winnerNum;
           
+          if (room.sessionSavePromise) {
+            try { await room.sessionSavePromise; } catch {}
+          }
+
           io.to(roomId).emit('game:error', { message: 'Opponent disconnected. You win by forfeit!' });
           io.to(roomId).emit('game:state', room.state);
 
@@ -246,30 +284,12 @@ io.on('connection', (socket) => {
           }, { new: true });
 
           if (gameSession && gameSession.isRated) {
-            const p1Id = gameSession.players.find(p => p.playerNumber === 1).userId;
-            const p2Id = gameSession.players.find(p => p.playerNumber === 2).userId;
-            
-            const user1 = await User.findById(p1Id);
-            const user2 = await User.findById(p2Id);
-
-            if (user1 && user2) {
-              let s1 = winnerNum === 1 ? 1 : 0;
-              let s2 = winnerNum === 2 ? 1 : 0;
-              
-              if (winnerNum === 1) { user1.stats.wins++; user2.stats.losses++; }
-              else { user1.stats.losses++; user2.stats.wins++; }
-
-              const newG1 = updateGlicko(user1.glicko.rating, user1.glicko.rd, user1.glicko.vol, [{ rating: user2.glicko.rating, rd: user2.glicko.rd, score: s1 }]);
-              const newG2 = updateGlicko(user2.glicko.rating, user2.glicko.rd, user2.glicko.vol, [{ rating: user1.glicko.rating, rd: user1.glicko.rd, score: s2 }]);
-
-              user1.glicko = newG1;
-              user2.glicko = newG2;
-              await user1.save();
-              await user2.save();
-            }
+            await applyRatingUpdate(gameSession, winnerNum);
           }
+
+          room.players.forEach(p => activePlayers.delete(p.userId));
+          rooms.delete(roomId);
         }
-        rooms.delete(roomId);
       }
     }
   });

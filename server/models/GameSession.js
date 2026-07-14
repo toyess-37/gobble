@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const GameSessionSchema = new mongoose.Schema({
   _id: { type: String }, // roomId
   isRated: { type: Boolean, default: true },
-  status: { type: String, enum: ['in_progress', 'completed'], default: 'in_progress' },
+  status: { type: String, enum: ['in_progress', 'completed', 'forfeited'], default: 'in_progress' },
   mapConfig: {
     rows: [Number],
     cols: [Number],

@@ -19,7 +19,6 @@ const UserSchema = new mongoose.Schema({
     draws: { type: Number, default: 0 },
   },
 
-
   social: {
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     blocked: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
@@ -33,6 +32,8 @@ const UserSchema = new mongoose.Schema({
   refreshTokens: [{
     family: String,
     tokenId: String,
+    previousTokenId: String,
+    rotatedAt: Date,
     createdAt: Date
   }],
 

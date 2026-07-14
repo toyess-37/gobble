@@ -11,32 +11,32 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      const newSocket = io('http://localhost:3001', {
-        auth: { token },
-        reconnection: true,
-      });
+      if (!socket) {
+        const newSocket = io('http://localhost:3001', {
+          auth: { token },
+          reconnection: true,
+        });
 
-      newSocket.on('connect', () => {
-        setIsConnected(true);
-      });
+        newSocket.on('connect', () => {
+          setIsConnected(true);
+        });
 
-      newSocket.on('disconnect', () => {
-        setIsConnected(false);
-      });
+        newSocket.on('disconnect', () => {
+          setIsConnected(false);
+        });
 
-      setSocket(newSocket);
-
-      return () => {
-        newSocket.close();
-      };
+        setSocket(newSocket);
+      } else {
+        socket.auth.token = token;
+      }
     } else {
       if (socket) {
         socket.close();
         setSocket(null);
+        setIsConnected(false);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, socket]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected }}>

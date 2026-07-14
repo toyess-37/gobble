@@ -3,7 +3,6 @@ import BoardTile from './BoardTile.jsx';
 import { N, THEME } from '../utils/constants';
 import { isValidPlacement } from '../utils/validation';
 import { getCellData } from '../../shared/cellData';
-import '../styles/components.css';
 
 const Board = ({ selectedTile, boardState, onCellClick, gameMap, evalStep }) => {
   const cellDataArray = useMemo(() => {
@@ -29,9 +28,9 @@ const Board = ({ selectedTile, boardState, onCellClick, gameMap, evalStep }) => 
 
   return (
     <div 
-      className="board-container"
+      className="grid gap-1 sm:gap-2 justify-center content-center max-w-full p-3 sm:p-5 box-border bg-bg-card rounded-2xl border border-border shadow-[0_10px_30px_rgba(0,0,0,0.3)]"
       style={{ 
-        '--grid-n': N,
+        gridTemplateColumns: `repeat(${N}, minmax(30px, 80px))`,
       }}
     >
       {Array.from({ length: N * N }).map((_, i) => {

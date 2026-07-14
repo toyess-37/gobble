@@ -9,7 +9,6 @@ import GamePage from './pages/GamePage';
 import PostGamePage from './pages/PostGamePage';
 import ProfilePage from './pages/ProfilePage';
 import SpectatePage from './pages/SpectatePage';
-import './App.css';
 
 // Component to protect routes requiring authentication
 const ProtectedRoute = ({ children }) => {

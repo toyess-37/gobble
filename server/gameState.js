@@ -6,12 +6,14 @@ import { GameSession } from './models/GameSession.js';
 import { User } from './models/User.js';
 
 export const rooms = new Map();
+export const activePlayers = new Map();
 
 export const createRoom = (roomId, isRated = true) => {
   const mapConfig = generateMap();
   const room = {
     id: roomId,
     isRated,
+    lastActivityAt: Date.now(),
     players: [],
     state: {
       map: mapConfig,
@@ -34,27 +36,51 @@ export const createRoom = (roomId, isRated = true) => {
 export const joinRoom = (roomId, user, socketId) => {
   const room = rooms.get(roomId);
   if (!room) return { error: 'Room not found' };
+
+  room.lastActivityAt = Date.now();
+
+  const resolvedId = user.id || user.userId || user._id;
+
+  // check if user is already in the room
+  const existingPlayer = room.players.find(p => p.userId === resolvedId);
+  if (existingPlayer) {
+    existingPlayer.socketId = socketId;
+    return { room, playerNumber: existingPlayer.playerNumber, isRejoin: true };
+  }
+
+  // Prevent joining a second game while already in one
+  const activeRoomId = activePlayers.get(resolvedId);
+  if (activeRoomId && activeRoomId !== roomId && rooms.has(activeRoomId)) {
+    return { error: 'Already in an active game' };
+  }
+
   if (room.players.length >= 2) return { error: 'Room is full' };
 
   const playerNumber = room.players.length + 1;
   const player = {
-    userId: user.id,
+    userId: resolvedId,
     username: user.username,
     playerNumber,
     socketId
   };
   
   room.players.push(player);
-  return { room, playerNumber };
+  activePlayers.set(resolvedId, roomId);
+  return { room, playerNumber, isRejoin: false };
 };
 
-export const handlePlaceTile = async (roomId, playerNumber, index, tileValue) => {
+export const handlePlaceTile = async (roomId, playerNumber, index, tileValue, socketId) => {
   const room = rooms.get(roomId);
   if (!room) return { error: 'Room not found' };
   
+  room.lastActivityAt = Date.now();
+
   const state = room.state;
   if (state.phase !== 'playing') return { error: 'Game not active' };
   if (state.currentPlayer !== playerNumber) return { error: 'Not your turn' };
+
+  const callingPlayer = room.players.find(p => p.playerNumber === playerNumber);
+  if (!callingPlayer || callingPlayer.socketId !== socketId) return { error: 'Player slot mismatch' };
 
   const cellData = getCellData(index, state.map);
 
@@ -63,35 +89,41 @@ export const handlePlaceTile = async (roomId, playerNumber, index, tileValue) =>
   }
 
   if (state.moves.length > 0) {
-    const lastMove = state.moves[state.moves.length - 1];
-    const timeDiff = Date.now() - lastMove.timestamp;
-    if (timeDiff < 750) {
-      const player = room.players.find(p => p.playerNumber === playerNumber);
-      if (player && player.userId) {
-        User.findByIdAndUpdate(player.userId, {
-          $push: {
-            flags: {
-              reason: `Move too fast (${timeDiff}ms)`,
-              gameId: roomId,
-              timestamp: new Date()
+    const myMoves = state.moves.filter(m => m.player === playerNumber);
+    const lastOwnMove = myMoves.length > 0 ? myMoves[myMoves.length - 1] : null;
+    if (lastOwnMove) {
+      const timeDiff = Date.now() - lastOwnMove.timestamp;
+      if (timeDiff < 750) {
+        const player = room.players.find(p => p.playerNumber === playerNumber);
+        if (player && player.userId) {
+          User.findByIdAndUpdate(player.userId, {
+            $push: {
+              flags: {
+                reason: `Move too fast (${timeDiff}ms)`,
+                gameId: roomId,
+                timestamp: new Date()
+              }
             }
-          }
-        }).catch(err => console.error("Error flagging user:", err));
+          }).catch(err => console.error("Error flagging user:", err));
+        }
       }
     }
   }
 
+  let isOperator = OPERATORS.includes(tileValue);
+  let currentRack = playerNumber === 1 ? state.p1Rack : state.p2Rack;
+
+  if (isOperator && currentRack.operators <= 0) return { error: 'No operator tiles remaining' };
+  if (!isOperator && currentRack.numbers <= 0) return { error: 'No number tiles remaining' };
+
   let valueToPlace = tileValue;
-  if (cellData.isPink) {
+  if (!isOperator && cellData.isPink) {
     const numValue = parseInt(valueToPlace, 10);
     if (numValue !== 0) valueToPlace = `-${valueToPlace}`;
   }
 
   state.board[index] = { value: valueToPlace, player: playerNumber };
 
-  let isOperator = OPERATORS.includes(tileValue);
-  let currentRack = playerNumber === 1 ? state.p1Rack : state.p2Rack;
-  
   if (isOperator) currentRack.operators -= 1;
   else currentRack.numbers -= 1;
 
@@ -124,10 +156,21 @@ export const handlePlaceTile = async (roomId, playerNumber, index, tileValue) =>
 
   // Periodic MongoDB push (every 10 moves)
   if (state.moves.length % 10 === 0 && !isBoardFull) {
-    await GameSession.findByIdAndUpdate(roomId, {
+    GameSession.findByIdAndUpdate(roomId, {
       $push: { moves: { $each: state.moves.slice(-10) } }
-    }, { new: true });
+    }, { new: true }).catch(err => console.error('Periodic save error:', err));
   }
 
   return { success: true, isBoardFull };
 };
+
+// Clean up abandoned waiting rooms every minute
+setInterval(() => {
+  const cutoff = Date.now() - 5 * 60 * 1000; // 5 minutes ago
+  for (const [roomId, room] of rooms.entries()) {
+    if (room.state.phase === 'waiting' && room.lastActivityAt < cutoff) {
+      room.players.forEach(p => activePlayers.delete(p.userId));
+      rooms.delete(roomId);
+    }
+  }
+}, 60 * 1000);

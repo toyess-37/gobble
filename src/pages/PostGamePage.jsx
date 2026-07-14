@@ -27,8 +27,8 @@ export default function PostGamePage() {
     fetchMatch();
   }, [matchId]);
 
-  if (loading) return <div style={{ color: '#fff', textAlign: 'center', marginTop: '50px' }}>Loading match results...</div>;
-  if (error) return <div style={{ color: '#ff6b6b', textAlign: 'center', marginTop: '50px' }}>{error}</div>;
+  if (loading) return <div className="text-white text-center mt-12 font-sans bg-bg min-h-screen">Loading match results...</div>;
+  if (error) return <div className="text-error text-center mt-12 font-sans bg-bg min-h-screen">{error}</div>;
   if (!matchData) return null;
 
   const { players, scores, winner } = matchData;
@@ -43,68 +43,62 @@ export default function PostGamePage() {
   const titleColor = isDraw ? '#e6a822' : (isWinner ? '#4caf50' : '#ff6b6b');
 
   return (
-    <div style={{ backgroundColor: '#1a1a1a', minHeight: '100vh', color: '#eaeaea', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px' }}>
+    <div className="bg-bg min-h-screen text-text flex flex-col items-center py-12 px-4 sm:px-6 font-sans w-full">
       
-      <h1 style={{ color: titleColor, fontSize: '64px', margin: '0 0 48px 0', textTransform: 'uppercase', letterSpacing: '4px' }}>
+      <h1 className="text-5xl md:text-6xl m-0 mb-8 sm:mb-12 uppercase tracking-[4px]" style={{ color: titleColor }}>
         {titleText}
       </h1>
 
-      <div style={{ backgroundColor: '#242424', borderRadius: '16px', padding: '48px', width: '100%', maxWidth: '800px', border: '1px solid #333', display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginBottom: '32px' }}>
+      <div className="bg-bg-card rounded-2xl p-8 sm:p-12 w-full max-w-[800px] border border-border flex flex-col sm:flex-row justify-around items-center mb-8 gap-8 sm:gap-0">
         
         {/* Player 1 */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: '80px', height: '80px', backgroundColor: THEME.red.bg, borderRadius: '16px', color: THEME.red.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', fontWeight: 'bold', margin: '0 auto 16px auto', boxShadow: `0 0 20px ${THEME.red.color}40` }}>
+        <div className="text-center flex flex-col items-center">
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold mb-4 mx-auto" style={{ backgroundColor: THEME.red.bg, color: THEME.red.color }}>
             {p1.username[0].toUpperCase()}
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px' }}>{p1.username}</div>
-          <div style={{ fontSize: '64px', fontWeight: 'bold', color: '#fff', marginBottom: '8px' }}>{scores.p1}</div>
-          <div style={{ fontSize: '14px', color: '#888' }}>
-            Rating TBA
-          </div>
+          <div className="text-xl font-bold mb-2">{p1.username}</div>
+          <div className="text-6xl font-bold text-white mb-2">{scores.p1}</div>
         </div>
 
-        <div style={{ fontSize: '24px', color: '#888', fontWeight: 'bold' }}>VS</div>
+        <div className="text-2xl text-text-muted font-bold">VS</div>
 
         {/* Player 2 */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: '80px', height: '80px', backgroundColor: THEME.blue.bg, borderRadius: '16px', color: THEME.blue.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', fontWeight: 'bold', margin: '0 auto 16px auto', boxShadow: `0 0 20px ${THEME.blue.color}40` }}>
+        <div className="text-center flex flex-col items-center">
+          <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold mb-4 mx-auto" style={{ backgroundColor: THEME.blue.bg, color: THEME.blue.color }}>
             {p2.username[0].toUpperCase()}
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px' }}>{p2.username}</div>
-          <div style={{ fontSize: '64px', fontWeight: 'bold', color: '#fff', marginBottom: '8px' }}>{scores.p2}</div>
-          <div style={{ fontSize: '14px', color: '#888' }}>
-            Rating TBA
-          </div>
+          <div className="text-xl font-bold mb-2">{p2.username}</div>
+          <div className="text-6xl font-bold text-white mb-2">{scores.p2}</div>
         </div>
 
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '48px' }}>
+      <div className="flex flex-col sm:flex-row gap-4 mb-12 w-full sm:w-auto justify-center">
         <button 
           onClick={() => navigate('/lobby')}
-          style={{ padding: '16px 32px', fontSize: '18px', fontWeight: 'bold', backgroundColor: '#e66545', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+          className="py-3.5 px-7 text-base font-bold bg-primary text-white border-none rounded-lg cursor-pointer transition-colors duration-200 hover:bg-primary-hover active:bg-primary-active w-full sm:w-auto"
         >
-          Rematch
+          New Match
         </button>
         <button 
           onClick={() => navigate('/lobby')}
-          style={{ padding: '16px 32px', fontSize: '18px', fontWeight: 'bold', backgroundColor: '#242424', color: '#fff', border: '1px solid #333', borderRadius: '8px', cursor: 'pointer' }}
+          className="py-3.5 px-7 text-base font-bold bg-bg-card text-white border border-border-light rounded-lg cursor-pointer transition-colors duration-200 hover:bg-border hover:text-white active:bg-black w-full sm:w-auto"
         >
           Return to Lobby
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', width: '100%', maxWidth: '800px' }}>
-        <div style={{ backgroundColor: '#242424', padding: '24px', borderRadius: '12px', border: '1px solid #333' }}>
-          <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '12px', marginBottom: '24px' }}>Match Best Move</h4>
-          <div style={{ textAlign: 'center', color: '#aaa', fontStyle: 'italic' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-[800px]">
+        <div className="bg-bg-card p-6 rounded-xl border border-border">
+          <h4 className="text-text-muted uppercase text-xs mb-6">Match Best Move</h4>
+          <div className="text-center text-text-subtle italic">
             Logic to be implemented during bot training phase.
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#242424', padding: '24px', borderRadius: '12px', border: '1px solid #333' }}>
-          <h4 style={{ color: '#888', textTransform: 'uppercase', fontSize: '12px', marginBottom: '24px' }}>Rating Trend</h4>
-          <div style={{ textAlign: 'center', color: '#aaa', fontStyle: 'italic' }}>
+        <div className="bg-bg-card p-6 rounded-xl border border-border">
+          <h4 className="text-text-muted uppercase text-xs mb-6">Rating Trend</h4>
+          <div className="text-center text-text-subtle italic">
             Graph placeholder.
           </div>
         </div>

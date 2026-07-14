@@ -4,7 +4,6 @@ import Board from '../components/Board.jsx';
 import Rack from '../components/Rack.jsx';
 import { THEME, N } from '../utils/constants.js';
 import { useSocket } from '../contexts/SocketContext.jsx';
-import '../styles/components.css';
 
 export default function SpectatePage() {
   const { roomId } = useParams();
@@ -56,9 +55,9 @@ export default function SpectatePage() {
 
   if (!state || !state.map) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#1a1a1a', color: '#eaeaea' }}>
-        <h2 style={{ marginBottom: '16px', fontSize: '32px' }}>Spectating Room: {roomId}</h2>
-        <p style={{ color: '#aaa', fontSize: '18px' }}>Waiting for game data...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg text-text font-sans">
+        <h2 className="mb-4 text-3xl">Spectating Room: {roomId}</h2>
+        <p className="text-text-subtle text-lg">Waiting for game data...</p>
       </div>
     );
   }
@@ -67,37 +66,37 @@ export default function SpectatePage() {
   const p2Name = players.find(p => p.playerNumber === 2)?.username || "Player 2";
 
   return (
-    <div style={{ backgroundColor: '#1a1a1a', minHeight: '100vh', color: '#eaeaea', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #333' }}>
-        <h1 style={{ margin: 0, fontSize: '24px', color: '#ff6b6b' }}>
-          <span style={{ fontSize: '12px', verticalAlign: 'middle', marginRight: '8px' }}>🔴 LIVE MATCH</span>
+    <div className="bg-bg min-h-screen text-text flex flex-col font-sans">
+      <header className="px-6 py-4 flex justify-between items-center border-b border-border">
+        <h1 className="m-0 text-2xl text-error font-bold flex items-center gap-2">
+          <span className="text-sm">🔴</span> LIVE MATCH
         </h1>
-        <div style={{ color: '#aaa', fontSize: '14px' }}>1 Viewer</div>
-        <button onClick={() => navigate('/lobby')} style={{ padding: '6px 16px', backgroundColor: 'transparent', color: '#fff', border: '1px solid #333', borderRadius: '4px', cursor: 'pointer' }}>Exit</button>
+        <div className="text-text-subtle text-sm">1 Viewer</div>
+        <button onClick={() => navigate('/lobby')} className="px-4 py-1.5 bg-transparent text-white border border-border rounded cursor-pointer transition-colors duration-200 hover:bg-border font-sans font-medium">Exit</button>
       </header>
 
-      <div style={{ backgroundColor: '#242424', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #333' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '32px', height: '32px', backgroundColor: THEME.blue.bg, color: THEME.blue.color, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+      <div className="bg-bg-card px-4 sm:px-6 py-3 flex justify-between items-center border-b border-border">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm sm:text-base" style={{ backgroundColor: THEME.red.bg, color: THEME.red.color }}>
             {p1Name[0].toUpperCase()}
           </div>
-          <div style={{ fontWeight: 'bold', fontSize: '18px' }}>{p1Name}</div>
-          <div style={{ color: THEME.blue.color, fontSize: '24px', fontWeight: 'bold' }}>{state.scores.p1}</div>
+          <div className="font-bold text-base sm:text-lg">{p1Name}</div>
+          <div className="text-xl sm:text-2xl font-bold" style={{ color: THEME.red.color }}>{state.scores.p1}</div>
         </div>
 
-        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff' }}>00:00</div>
+        <div className="text-xl sm:text-2xl font-bold text-white">00:00</div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ color: THEME.red.color, fontSize: '24px', fontWeight: 'bold' }}>{state.scores.p2}</div>
-          <div style={{ fontWeight: 'bold', fontSize: '18px' }}>{p2Name}</div>
-          <div style={{ width: '32px', height: '32px', backgroundColor: THEME.red.bg, color: THEME.red.color, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div className="text-xl sm:text-2xl font-bold" style={{ color: THEME.blue.color }}>{state.scores.p2}</div>
+          <div className="font-bold text-base sm:text-lg">{p2Name}</div>
+          <div className="w-8 h-8 rounded-md flex items-center justify-center font-bold text-sm sm:text-base" style={{ backgroundColor: THEME.blue.bg, color: THEME.blue.color }}>
             {p2Name[0].toUpperCase()}
           </div>
         </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-        <div style={{ pointerEvents: 'none' }}>
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="pointer-events-none">
           <Board
             selectedTile={null}
             boardState={state.board}
@@ -106,7 +105,7 @@ export default function SpectatePage() {
             evalStep={-1}
           />
         </div>
-        <div style={{ marginTop: '32px', color: '#aaa', backgroundColor: '#242424', padding: '12px 24px', borderRadius: '8px', border: '1px solid #333' }}>
+        <div className="mt-8 text-text-subtle bg-bg-card px-6 py-3 rounded-lg border border-border text-center text-sm">
           You are currently spectating. You cannot interact with the board.
         </div>
       </div>
