@@ -1,8 +1,5 @@
-/**
- * WARNING: This script is for LOCAL DEVELOPMENT ONLY.
- * It creates test users with known, hardcoded passwords.
- * NEVER run this script against or commit it alongside a production database connection string.
- */
+// for local development; 
+// creates test users with hardcoded passwords
 
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
@@ -33,11 +30,6 @@ const SEED_USERS = [
 ];
 
 async function seedDatabase() {
-  console.warn('\n======================================================');
-  console.warn('WARNING: Running local development database seed script.');
-  console.warn('Do NOT run this in production!');
-  console.warn('======================================================\n');
-
   if (!process.env.MONGO_URI) {
     console.error('MONGO_URI is not defined in .env');
     process.exit(1);
@@ -68,7 +60,6 @@ async function seedDatabase() {
       await newUser.save();
       console.log(`Created user '${userData.username}' with password '${userData.password}'.`);
     }
-
     console.log('\nSeeding complete.');
   } catch (error) {
     console.error('Error during seeding:', error);
