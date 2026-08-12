@@ -5,12 +5,13 @@ const isValidPartialPostfix = (path, intersectionIndices) => {
   const reqOps = Math.floor((N - 1) / 2);
   const memo = new Map();
 
-  const dp = (i, n, o) => {
+  const dp = (i, n) => {
+    let o = i-n;
     if (n > reqNums || o > reqOps) return false;
     if (i > 0 && i < N && n <= o) return false;
     if (i === N) return (n === reqNums && o === reqOps);
 
-    const key = i + "," + n + "," + o;
+    const key = i + "," + n;
     if (memo.has(key)) return memo.get(key);
 
     let canBeN = (path[i] === null || path[i] === 'N');
@@ -25,16 +26,26 @@ const isValidPartialPostfix = (path, intersectionIndices) => {
     if (i === N - 1) canBeN = false;
 
     let possible = false;
-    if (canBeN && dp(i + 1, n + 1, o)) possible = true;
-    if (!possible && canBeO && dp(i + 1, n, o + 1)) possible = true;
+    if (canBeN && dp(i + 1, n + 1)) possible = true;
+    if (!possible && canBeO && dp(i + 1, n)) possible = true;
 
     memo.set(key, possible);
     return possible;
   };
 
-  return dp(0, 0, 0);
+  return dp(0, 0);
 };
 
+// ERROR HERE (KNOWN): this only flags a division by zero once both operands of a '/' are already known. 
+// It can't see that an unfilled cell will "inevitably" force one, 
+// e.g. "7 0 - 0 0 [?] /" - every legal operator at [?] reduces the
+// preceding "0 0" to 0, making the final "/" a guaranteed div-by-zero. Each
+// placement leading up to that point passes validation individually, but the
+// row can still end up with an unfillable cell (no number OR operator legal).
+// Fixing this needs isValidPlacement to search whether
+// "any" full assignment of the remaining unknown cells (matching the pattern that
+// isValidPartialPostfix already enforces) avoids a forced
+// div-by-zero, not just check the values already on the board.
 const hasDivisionByZero = (pathValues) => {
   const stack = [];
   for (let i = 0; i < pathValues.length; i++) {

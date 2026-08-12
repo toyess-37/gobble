@@ -27,15 +27,15 @@ export const evaluatePostfix = (expression) => {
   return null;
 };
 
-export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
+export const evaluateLines = (board, gameMap, currentScores, scoredLineIds) => {
   let newScores = { p1: currentScores.p1, p2: currentScores.p2 };
   let newlyScoredLines = [];
 
   for (let r = 0; r < gameMap.rows.length; r++) {
     let rowIdx = gameMap.rows[r];
     let lineId = "row-" + rowIdx;
-    
-    let alreadyScored = scoredLines.includes(lineId);
+
+    let alreadyScored = scoredLineIds.includes(lineId);
 
     if (!alreadyScored) {
       let lineFilled = true;
@@ -52,9 +52,12 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
       if (lineFilled) {
         let result = evaluatePostfix(expression);
         if (result !== null) {
-          if (r === 0) newScores.p1 += result;
-          else if (r === 1) newScores.p2 += result;
-          newlyScoredLines.push(lineId);
+          // rows[0]/cols[0] is blue (player 1);
+          // rows[1]/cols[1] is red (player 2).
+          let player = r === 0 ? 1 : 2;
+          if (player === 1) newScores.p1 += result;
+          else newScores.p2 += result;
+          newlyScoredLines.push({ lineId, lineType: 'row', player, score: result });
         }
       }
     }
@@ -63,8 +66,8 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
   for (let c = 0; c < gameMap.cols.length; c++) {
     let colIdx = gameMap.cols[c];
     let lineId = "col-" + colIdx;
-    
-    let alreadyScored = scoredLines.includes(lineId);
+
+    let alreadyScored = scoredLineIds.includes(lineId);
 
     if (!alreadyScored) {
       let lineFilled = true;
@@ -81,9 +84,10 @@ export const evaluateLines = (board, gameMap, currentScores, scoredLines) => {
       if (lineFilled) {
         let result = evaluatePostfix(expression);
         if (result !== null) {
-          if (c === 0) newScores.p1 += result;
-          else if (c === 1) newScores.p2 += result;
-          newlyScoredLines.push(lineId);
+          let player = c === 0 ? 1 : 2;
+          if (player === 1) newScores.p1 += result;
+          else newScores.p2 += result;
+          newlyScoredLines.push({ lineId, lineType: 'col', player, score: result });
         }
       }
     }
